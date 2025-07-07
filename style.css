@@ -1,0 +1,54 @@
+* {
+  margin: 0;
+}
+
+body {
+  background-color: greenyellow;
+  z-index: -50;
+}
+
+div {
+  width: 64px;
+  height: 64px;
+}
+
+div[id="main"] {
+  background-color: gray;
+  position: fixed;
+  top: 128px;
+  left: 64px;
+  z-index: 2;
+}
+
+div[class="way"] {
+  background-color: yellow;
+  position: fixed;
+  top: 128px;
+  left: 192px;
+  z-index: 1;
+}
+
+div[class="tile"] {
+  background-color: burlywood;
+  position: fixed;
+  top: 64px;
+  left: 192px;
+  z-index: 1;
+}
+
+div[class="card"] {
+  background-color: lightblue;
+  position: fixed;
+  bottom: -32px;
+  left: 50%;
+  transform: translate(-50%);
+  width: 192px;
+  height: 320px;
+  border-radius: 16px;
+  transition: transform 0.3s ease-in-out;
+  z-index: 100;
+}
+
+div[class="card"]:hover {
+  transform: translate(-50%, -32px);
+}
