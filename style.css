@@ -4,7 +4,7 @@
 
 body {
   background-color: greenyellow;
-  z-index: -50;
+  z-index: 0;
 }
 
 div {
@@ -12,7 +12,7 @@ div {
   height: 64px;
 }
 
-div[id="main"] {
+#main {
   background-color: gray;
   position: fixed;
   top: 128px;
@@ -20,7 +20,7 @@ div[id="main"] {
   z-index: 2;
 }
 
-div[class="way"] {
+.way {
   background-color: yellow;
   position: fixed;
   top: 128px;
@@ -28,7 +28,7 @@ div[class="way"] {
   z-index: 1;
 }
 
-div[class="tile"] {
+.tile {
   background-color: burlywood;
   position: fixed;
   top: 64px;
@@ -36,19 +36,61 @@ div[class="tile"] {
   z-index: 1;
 }
 
-div[class="card"] {
+.card {
+  display: none;
   background-color: lightblue;
   position: fixed;
-  bottom: -32px;
+  bottom: 50%;
   left: 50%;
-  transform: translate(-50%);
+  transform: translate(-50%, 40%);
   width: 192px;
   height: 320px;
   border-radius: 16px;
-  transition: transform 0.3s ease-in-out;
   z-index: 100;
 }
 
-div[class="card"]:hover {
-  transform: translate(-50%, -32px);
+div.haveCard {
+  position: fixed;
+  bottom: 0px;
+  left: 50%;
+  z-index: 10;
+  transform: translate(-50%, -8px);
+  transition: transform 0.3s ease-in-out;
+}
+
+.haveCard:hover {
+  transform: translate(-50%, 96px) !important;
+}
+
+div.highlightCard {
+  border: red solid 2px;
+  transform: translate(-50%, 96px) !important;
+}
+
+.building {
+  background-color: brown;
+  position: fixed;
+  display: none;
+  z-index: 10;
+}
+
+#choiceBackground {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: block;
+  z-index: 99;
+}
+
+.monster {
+  background-color: red;
+  position: fixed;
+  top: 384px;
+  left: 768px;
+  width: 64px;
+  height: 64px;
+  z-index: 3;
 }
