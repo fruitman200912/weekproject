@@ -3,13 +3,8 @@
 }
 
 body {
-  background-color: greenyellow;
+  background-image: url(grass.png);
   z-index: 0;
-}
-
-div {
-  width: 64px;
-  height: 64px;
 }
 
 #main {
@@ -18,7 +13,28 @@ div {
   top: 128px;
   left: 64px;
   z-index: 2;
+  width: 64px;
+  height: 64px;
 }
+
+#main .hp-bar {
+  position: absolute;
+  top: -12px;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+#main .hp-inner {
+  height: 100%;
+  background: red;
+  width: 100%;
+  transition: width 0.2s ease-out;
+}
+
 
 .way {
   background-color: yellow;
@@ -26,6 +42,8 @@ div {
   top: 128px;
   left: 192px;
   z-index: 1;
+  width: 64px;
+  height: 64px;
 }
 
 .tile {
@@ -34,6 +52,8 @@ div {
   top: 64px;
   left: 192px;
   z-index: 1;
+  width: 64px;
+  height: 64px;
 }
 
 .card {
@@ -49,22 +69,56 @@ div {
   z-index: 100;
 }
 
-div.haveCard {
-  position: fixed;
-  bottom: 0px;
+.choiceCard {
   left: 50%;
-  z-index: 10;
-  transform: translate(-50%, -8px);
-  transition: transform 0.3s ease-in-out;
+  transition: all 0.3s ease;
+  transform-origin: center center;
+  transform: translate(-50%, -50%);
 }
 
+.choiceCard:hover {
+  transform: scale(1.1) translateY(-45%) translateX(-45%) !important;
+}
+
+#haveCardContainer {
+  position: relative;
+  bottom: 240px;
+  left: 50%;
+  transform: translateX(-50%);
+  height: 340px;
+  width: 100%;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  z-index: 10;
+  position: relative;
+}
+
+
+#haveCardContainer.hide {
+  z-index: 10 !important;
+  pointer-events: none;
+  opacity: 0.3;
+}
+
+.haveCard {
+  position: absolute;
+  transform: translateY(640px);
+  transition: transform 0.3s ease;
+  z-index: 10;
+  margin-left: 0;
+}
+
+
 .haveCard:hover {
-  transform: translate(-50%, 96px) !important;
+  transform: translateY(532px);
+  z-index: 999 !important;
 }
 
 div.highlightCard {
   border: red solid 2px;
-  transform: translate(-50%, 96px) !important;
+  transform: translateY(532px);
+  z-index: 999 !important;
 }
 
 .building {
@@ -72,6 +126,33 @@ div.highlightCard {
   position: fixed;
   display: none;
   z-index: 10;
+  width: 64px;
+  height: 64px;
+}
+
+/*bulidingList >------------------------------------------------------------*/
+div.building1 {
+  background-color: aliceblue;
+}
+
+div.building2 {
+  background-color: black;
+}
+
+div.building3 {
+  background-color: aqua;
+}
+
+div.building4 {
+  background-color: crimson;
+}
+
+div.building5 {
+  background-color: deepskyblue;
+}
+
+div.building6 {
+  background-color: gold;
 }
 
 #choiceBackground {
@@ -88,9 +169,72 @@ div.highlightCard {
 .monster {
   background-color: red;
   position: fixed;
-  top: 384px;
-  left: 768px;
+  display: none;
   width: 64px;
   height: 64px;
-  z-index: 3;
+  z-index: 15;
+  width: 64px;
+  height: 64px;
+  pointer-events: none
+}
+
+.hp-bar {
+  position: absolute;
+  bottom: -10px;
+  left: 0;
+  width: 100%;
+  height: 6px;
+  background: rgba(0, 0, 0, 0.3);
+  border-radius: 3px;
+  overflow: hidden;
+  z-index: 20;
+  pointer-events: none
+}
+
+.hp-inner {
+  height: 100%;
+  background: red;
+  width: 100%;
+  transition: width 0.2s ease-out;
+  z-index: 21;
+  pointer-events: none
+}
+
+.projectile {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  background-image: url(arow.png);
+  border-radius: 50%;
+  z-index: 999;
+  pointer-events: none;
+}
+
+#playerStats {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  color: white;
+  background-color: rgba(0, 0, 0, 5);
+  padding: 5px;
+  border-radius: 5px;
+}
+
+#expBarContainer {
+  width: 10px;
+  height: 150px;
+  background-color: #555;
+  border-radius: 5px;
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  align-items: center;
+}
+
+#expBarFill {
+  height: 0%;
+  width: 100%;
+  background-color: #0f0;
+  border-radius: 5px;
 }
