@@ -37,7 +37,8 @@ body {
 
 
 .way {
-  background-color: yellow;
+  background-image: url(way/way1.png);
+  background-size: cover;
   position: fixed;
   top: 128px;
   left: 192px;
@@ -91,7 +92,6 @@ body {
   justify-content: center;
   align-items: flex-end;
   z-index: 10;
-  position: relative;
 }
 
 

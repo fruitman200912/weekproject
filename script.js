@@ -77,9 +77,9 @@ class TowerCard extends Card {
     this.type = 'tower';
     this.name = ['궁수 타워', '머스킷 타워', '저격수 타워'][level - 1];
     this.description = [
-      '기본 방어 시설',
-      '공격력 +30% 증가',
-      '특수 효과: 주변 타워 강화'
+      '.',
+      '.',
+      '.'
     ][level - 1];
     const styles = [
       { background: '#a8dadc', borderColor: '#457b9d' },
@@ -96,9 +96,9 @@ class SpellCard extends Card {
     this.type = 'spell';
     this.name = ['화살', '폭격', '뉴클리어'][level - 1];
     this.description = [
-      '적 1명에게 화염 피해',
-      '적들을 3초 동안 빙결',
-      '광역 번개 피해'
+      '.',
+      '.',
+      '.'
     ][level - 1];
     const styles = [
       { background: '#f5576c', borderColor: '#c1121f' },
@@ -291,6 +291,9 @@ function generateMap() {
       newWay.id = 'way' + (i + 1);
       let currentLeft = parseInt(getComputedStyle(wayDiv).left) || 0;
       newWay.style.left = (currentLeft + 64 * pm) + "px";
+      newWay.style.backgroundImage = "url(way/way1.png)"
+      if (newWay.id == 'way10') { newWay.style.backgroundImage = 'url(way/way6.png)' }
+      if (newWay.id == 'way23') { newWay.style.backgroundImage = 'url(way/way4.png)' }
       wayDiv.parentNode.appendChild(newWay);
     }
     j = i;
@@ -300,6 +303,9 @@ function generateMap() {
       newWay.id = 'way' + (i + 1);
       let currentTop = parseInt(getComputedStyle(wayDiv).top) || 0;
       newWay.style.top = (currentTop + 64) + "px";
+      newWay.style.backgroundImage = "url(way/way2.png)"
+      if (newWay.id == 'way12') { newWay.style.backgroundImage = 'url(way/way5.png)' }
+      if (newWay.id == 'way25') { newWay.style.backgroundImage = 'url(way/way3.png)' }
       wayDiv.parentNode.appendChild(newWay);
     }
     pm *= -1;
@@ -347,7 +353,7 @@ function generateMap() {
         '저격수 타워': 'building3',
         '화살': 'building4',
         '폭격': 'building5',
-        '뉴클리어': 'building6',
+        '.': 'building6',
       };
 
       const buildingClass = nameToBuildingClass[cardName];
