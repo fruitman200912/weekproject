@@ -2,7 +2,88 @@ let currentExp = 0;
 let currentLevel = 1;
 let expToNextLevel = 10;
 let monsterCreationStarted = false;
-let isGamePaused = false;
+let isGamePaused = true; // 게임 시작 시 일시 정지 상태로 시작하도록 변경
+let startTime = null; // 게임 타이머가 처음 시작된 시점의 타임스탬프 (고정)
+let survivalInterval = null;
+let totalPausedTime = 0; // 게임이 일시 정지된 총 시간 (누적)
+let pauseStartTime = null; // 현재 일시 정지가 시작된 시점의 타임스탬프
+let fail = false; // fail 변수 초기화 추가
+
+// monster>------------------------------------------------------------------------------------------------------------------
+const baseMonster = document.getElementById('monster'); // monster 템플릿 요소 참조
+
+let monsterDelay = 3000;  // 초기 생성 간격
+let minDelay = 250;       // 최소 제한
+let delayReduction = 275; // 줄일 양
+let monsterDelayInterval = null; // 몬스터 딜레이 조절 인터벌 ID를 저장할 변수 추가
+
+// start >-----------------------------------------------------------------------------------------------------------------
+window.onload = function () {
+  const main = document.getElementById('main');
+  main.dataset.hp = 100;
+  main.dataset.maxHp = 100;
+  const hpBar = document.createElement('div');
+  hpBar.className = 'hp-bar';
+  hpBar.innerHTML = `<div class="hp-inner" style="width: 100%;"></div>`;
+  main.appendChild(hpBar);
+
+  generateMap(); // 맵 생성은 그대로 유지
+  showChoice(); // 카드 선택 화면 표시 (여기서 게임이 일시 정지됨)
+
+  startTowerAttackLoop();
+  startMainUnderAttackLoop();
+
+  updateUIExp();
+  updateUILevel();
+};
+
+// time >----------------------------------------------------------------------------------
+function updateTimeDisplay() {
+  if (isGamePaused || startTime === null) return;
+
+  const now = Date.now();
+  const activePlayTime = now - startTime - totalPausedTime;
+  const seconds = Math.floor(activePlayTime / 1000);
+
+  const display = document.getElementById('timeDisplay');
+  if (display) {
+    display.textContent = `생존 시간: ${formatTime(seconds)}`;
+  }
+}
+
+function startSurvivalTimer() {
+  if (survivalInterval === null) {
+    survivalInterval = setInterval(updateTimeDisplay, 1000);
+  }
+}
+
+function pauseSurvivalTimer() {
+  if (pauseStartTime === null) {
+    pauseStartTime = Date.now();
+    clearInterval(survivalInterval);
+    survivalInterval = null;
+  }
+}
+
+function resumeSurvivalTimer() {
+  if (startTime === null) {
+    startTime = Date.now();
+    totalPausedTime = 0;
+    pauseStartTime = null;
+  } else if (pauseStartTime !== null) {
+    const pauseDuration = Date.now() - pauseStartTime;
+    totalPausedTime += pauseDuration;
+    pauseStartTime = null;
+  }
+  startSurvivalTimer();
+  updateTimeDisplay();
+}
+
+function formatTime(seconds) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
 
 // cardClass >------------------------------------------------------------------------------
 class CardFactory {
@@ -77,10 +158,15 @@ class TowerCard extends Card {
     this.type = 'tower';
     this.name = ['궁수 타워', '머스킷 타워', '저격수 타워'][level - 1];
     this.description = [
-      '.',
-      '.',
-      '.'
+      '가벼운 데미지, 짧은 범위',
+      '중간 데미지와 범위',
+      '높은 데미지, 긴 범위'
     ][level - 1];
+
+    this.damage = [2, 4, 20][level - 1];
+    this.range = [128, 256, 1024][level - 1];
+    this.cooldown = [1000, 750, 10000][level - 1]; // 각 타워 레벨별 쿨다운 시간 (밀리초)
+
     const styles = [
       { background: '#a8dadc', borderColor: '#457b9d' },
       { background: '#f1faee', borderColor: '#e63946' },
@@ -109,66 +195,135 @@ class SpellCard extends Card {
   }
 }
 
-let fail = false;
 
 //tawerAttack >------------------------------------------------------------------------------------------------------------
 const towerList = [];
 
 function registerNewTower(newBuilding, buildingClass) {
+  // buildingClass가 정확히 'building1', 'building2', 'building3' 중 하나인지 확인
   if (["building1", "building2", "building3"].includes(buildingClass)) {
     newBuilding.isReady = true;
     newBuilding.cooldownTimer = null;
     towerList.push(newBuilding);
+  } else {
+    // 만약 타워가 building1, building2, building3 클래스가 아니라면 경고
+    console.warn('Attempted to register a tower with an unrecognized class:', buildingClass);
   }
 }
 
 function startTowerAttackLoop() {
+  const mainCenterX = 64 + 128 / 2;
+  const mainCenterY = 0 + 192 / 2;
+
   setInterval(() => {
     if (isGamePaused) return;
 
-    const monsters = document.querySelectorAll('.monster');
+    const monsters = Array.from(document.querySelectorAll('.monster'));
 
     towerList.forEach(tower => {
       if (!tower.isReady || tower.cooldownTimer !== null) return;
 
       const towerLeft = parseFloat(getComputedStyle(tower).left);
       const towerTop = parseFloat(getComputedStyle(tower).top);
-      const range = 128;
+      const range = parseFloat(tower.dataset.range) || 128;
+      const damage = parseInt(tower.dataset.damage) || 2;
+      const towerClass = Array.from(tower.classList).find(cls => cls.startsWith('building'));
 
-      for (const monster of monsters) {
+      const monstersInRange = monsters.filter(monster => {
         const monsterLeft = parseFloat(getComputedStyle(monster).left);
         const monsterTop = parseFloat(getComputedStyle(monster).top);
-
         const dx = monsterLeft - towerLeft;
         const dy = monsterTop - towerTop;
         const distance = Math.sqrt(dx * dx + dy * dy);
+        return distance <= range;
+      });
 
-        if (distance <= range) {
-          shootProjectile(tower, monster, () => {
-            let hp = parseInt(monster.dataset.hp);
-            const damage = 2;
-            hp -= damage;
-            monster.dataset.hp = hp;
 
-            const inner = monster.querySelector('.hp-inner');
-            const maxHp = parseInt(monster.dataset.maxHp);
-            if (inner) inner.style.width = (hp / maxHp * 100) + '%';
+      if (monstersInRange.length === 0) return;
 
-            if (hp <= 0) {
-              const expGained = parseInt(monster.dataset.expValue) || 0;
-              monster.remove();
-              gainExperience(expGained);
-            }
-          })
+      let targetMonster = null;
 
-          tower.isReady = false;
-          tower.cooldownTimer = setTimeout(() => {
-            tower.isReady = true;
-            tower.cooldownTimer = null;
-          }, 1000);
+      // 2. 타워 유형에 따라 몬스터 정렬 및 대상 선택
+      if (towerClass === 'building1' || towerClass === 'building2') {
+        monstersInRange.sort((a, b) => {
+          const aMonsterLeft = parseFloat(getComputedStyle(a).left);
+          const aMonsterTop = parseFloat(getComputedStyle(a).top);
+          const aMonsterCenterX = aMonsterLeft + 64 / 2;
+          const aMonsterCenterY = aMonsterTop + 64 / 2;
+          const distAToMain = Math.sqrt(Math.pow(aMonsterCenterX - mainCenterX, 2) + Math.pow(aMonsterCenterY - mainCenterY, 2));
 
-          break;
-        }
+          const bMonsterLeft = parseFloat(getComputedStyle(b).left);
+          const bMonsterTop = parseFloat(getComputedStyle(b).top);
+          const bMonsterCenterX = bMonsterLeft + 64 / 2;
+          const bMonsterCenterY = bMonsterTop + 64 / 2;
+          const distBToMain = Math.sqrt(Math.pow(bMonsterCenterX - mainCenterX, 2) + Math.pow(bMonsterCenterY - mainCenterY, 2));
+
+          return distAToMain - distBToMain;
+        });
+        targetMonster = monstersInRange[0];
+      } else if (towerClass === 'building3') {
+        monstersInRange.sort((a, b) => {
+          const aMaxHp = parseInt(a.dataset.maxHp) || 0;
+          const bMaxHp = parseInt(b.dataset.maxHp) || 0;
+
+          if (bMaxHp !== aMaxHp) {
+            return bMaxHp - aMaxHp;
+          } else {
+            const aMonsterLeft = parseFloat(getComputedStyle(a).left);
+            const aMonsterTop = parseFloat(getComputedStyle(a).top);
+            const aMonsterCenterX = aMonsterLeft + 64 / 2;
+            const aMonsterCenterY = aMonsterTop + 64 / 2;
+            const distAToMain = Math.sqrt(Math.pow(aMonsterCenterX - mainCenterX, 2) + Math.pow(aMonsterCenterY - mainCenterY, 2));
+
+            const bMonsterLeft = parseFloat(getComputedStyle(b).left);
+            const bMonsterTop = parseFloat(getComputedStyle(b).top);
+            const bMonsterCenterX = bMonsterLeft + 64 / 2;
+            const bMonsterCenterY = bMonsterTop + 64 / 2;
+            const distBToMain = Math.sqrt(Math.pow(bMonsterCenterX - mainCenterX, 2) + Math.pow(bMonsterCenterY - mainCenterY, 2));
+
+            return distAToMain - distBToMain;
+          }
+        });
+        targetMonster = monstersInRange[0];
+      }
+      else if (monstersInRange.length > 0) {
+        monstersInRange.sort((a, b) => {
+          const aMonsterLeft = parseFloat(getComputedStyle(a).left);
+          const aMonsterTop = parseFloat(getComputedStyle(a).top);
+          const distA = Math.sqrt(Math.pow(aMonsterLeft - towerLeft, 2) + Math.pow(aMonsterTop - towerTop, 2));
+
+          const bMonsterLeft = parseFloat(getComputedStyle(b).left);
+          const bMonsterTop = parseFloat(getComputedStyle(b).top);
+          const distB = Math.sqrt(Math.pow(bMonsterLeft - towerLeft, 2) + Math.pow(bMonsterTop - towerTop, 2));
+          return distA - distB;
+        });
+        targetMonster = monstersInRange[0];
+        console.warn(`Unrecognized tower class '${towerClass}', defaulting to closest monster target.`);
+      }
+
+      if (targetMonster) {
+        shootProjectile(tower, targetMonster, () => {
+          let hp = parseInt(targetMonster.dataset.hp);
+          hp -= damage;
+          targetMonster.dataset.hp = hp;
+
+          const inner = targetMonster.querySelector('.hp-inner');
+          const maxHp = parseInt(targetMonster.dataset.maxHp);
+          if (inner) inner.style.width = (hp / maxHp * 100) + '%';
+
+          if (hp <= 0) {
+            const expGained = parseInt(targetMonster.dataset.expValue) || 0;
+            targetMonster.remove();
+            gainExperience(expGained);
+          }
+        })
+
+        tower.isReady = false;
+        tower.cooldownTimer = setTimeout(() => {
+          tower.isReady = true;
+          tower.cooldownTimer = null;
+        }, parseFloat(tower.dataset.cooldown) || 1000);
+      } else {
       }
     });
   }, 50);
@@ -178,15 +333,15 @@ function shootProjectile(tower, targetMonster, onHit) {
   const proj = document.createElement('div');
   proj.className = 'projectile';
 
-  const towerLeft = parseFloat(getComputedStyle(tower).left) + tower.offsetWidth / 2;
-  const towerTop = parseFloat(getComputedStyle(tower).top) + tower.offsetHeight / 2;
+  const towerLeft = parseFloat(getComputedStyle(tower).left) + 64 / 2;
+  const towerTop = parseFloat(getComputedStyle(tower).top) + 64 / 2;
   proj.style.left = towerLeft + 'px';
   proj.style.top = towerTop + 'px';
 
   document.body.appendChild(proj);
 
-  const monsterLeft = parseFloat(getComputedStyle(targetMonster).left) + targetMonster.offsetWidth / 2;
-  const monsterTop = parseFloat(getComputedStyle(targetMonster).top) + targetMonster.offsetHeight / 2;
+  const monsterLeft = parseFloat(getComputedStyle(targetMonster).left) + 64 / 2;
+  const monsterTop = parseFloat(getComputedStyle(targetMonster).top) + 64 / 2;
 
   const dx = monsterLeft - towerLeft;
   const dy = monsterTop - towerTop;
@@ -217,7 +372,6 @@ function shootProjectile(tower, targetMonster, onHit) {
   }, interval);
 }
 
-
 // monsterfunction >---------------------------------------------------------------------------------------------------------
 function updateMainHpBar(hp) {
   const main = document.getElementById('main');
@@ -225,6 +379,11 @@ function updateMainHpBar(hp) {
   const maxHp = parseInt(main.dataset.maxHp) || 100;
   const percent = (hp / maxHp) * 100;
   if (inner) inner.style.width = percent + '%';
+}
+
+function stopSurvivalTimer() {
+  clearInterval(survivalInterval);
+  survivalInterval = null;
 }
 
 function startMainUnderAttackLoop() {
@@ -245,33 +404,15 @@ function startMainUnderAttackLoop() {
     updateMainHpBar(mainHp);
 
     if (mainHp <= 0) {
-      alert("Main이 파괴되었습니다!");
+      stopSurvivalTimer();
+      const endTime = Date.now();
+      const seconds = Math.floor((endTime - startTime - totalPausedTime) / 1000);
+      alert(`Main이 파괴되었습니다!\n당신은 ${formatTime(seconds)} 동안 버텼습니다.`);
       fail = true;
       location.reload();
     }
   }, 1000);
 }
-
-
-// start >-----------------------------------------------------------------------------------------------------------------
-window.onload = function () {
-  showChoice();
-  setTimeout(generateMap, 0);
-
-  const main = document.getElementById('main');
-  main.dataset.hp = 100;
-  main.dataset.maxHp = 100;
-  const hpBar = document.createElement('div');
-  hpBar.className = 'hp-bar';
-  hpBar.innerHTML = `<div class="hp-inner" style="width: 100%;"></div>`;
-  main.appendChild(hpBar);
-
-  startTowerAttackLoop();
-  startMainUnderAttackLoop();
-
-  updateUIExp();
-  updateUILevel();
-};
 
 // map >------------------------------------------------------------------------------------------------------------------
 function generateMap() {
@@ -289,7 +430,7 @@ function generateMap() {
       let wayDiv = document.getElementById('way' + i);
       const newWay = wayDiv.cloneNode(true);
       newWay.id = 'way' + (i + 1);
-      let currentLeft = parseInt(getComputedStyle(wayDiv).left) || 0;
+      let currentLeft = parseFloat(getComputedStyle(wayDiv).left) || 0;
       newWay.style.left = (currentLeft + 64 * pm) + "px";
       newWay.style.backgroundImage = "url(way/way1.png)"
       if (newWay.id == 'way10') { newWay.style.backgroundImage = 'url(way/way6.png)' }
@@ -301,7 +442,7 @@ function generateMap() {
       let wayDiv = document.getElementById('way' + i);
       const newWay = wayDiv.cloneNode(true);
       newWay.id = 'way' + (i + 1);
-      let currentTop = parseInt(getComputedStyle(wayDiv).top) || 0;
+      let currentTop = parseFloat(getComputedStyle(wayDiv).top) || 0;
       newWay.style.top = (currentTop + 64) + "px";
       newWay.style.backgroundImage = "url(way/way2.png)"
       if (newWay.id == 'way12') { newWay.style.backgroundImage = 'url(way/way5.png)' }
@@ -315,35 +456,37 @@ function generateMap() {
   pm = 1;
   let currentLeft = 0;
   let currentTop = 0;
+  let lastPlacedTile = document.getElementById('tile0');
 
   for (let i = 0; i < 32;) {
     for (let k = 0; k < (i <= 11 ? 10 : 11) && i < 32; k++, i++) {
-      let tileDiv = document.getElementById('tile' + i);
-
       if (k === 0) {
-        currentLeft = parseInt(getComputedStyle(tileDiv).left) || 0;
-        currentTop = parseInt(getComputedStyle(tileDiv).top) || 0;
+        currentLeft = parseFloat(getComputedStyle(lastPlacedTile).left) || 0;
+        currentTop = parseFloat(getComputedStyle(lastPlacedTile).top) || 0;
         if (i) {
           currentLeft += 64 * pm;
           currentTop += 128;
         }
       }
 
-      const newtile = tileDiv.cloneNode(true);
+      const newtile = document.getElementById('tile0').cloneNode(true);
       newtile.id = 'tile' + (i + 1);
       newtile.style.left = (currentLeft + 64 * pm * k) + "px";
       newtile.style.top = (currentTop) + "px";
 
-      tileDiv.parentNode.appendChild(newtile);
+      document.body.appendChild(newtile);
+      lastPlacedTile = newtile;
     }
     pm *= -1;
   }
 
   //building >------------------------------------------------------------------------------------------------------------------
-  buildingNum = 0;
   document.querySelectorAll('div[class="tile"]').forEach(tile => {
     tile.addEventListener('click', function (event) {
-      if (!activeHaveCard) return;
+      console.log('Tile clicked:', this.id);
+      if (!activeHaveCard) {
+        return;
+      }
       event.stopPropagation();
 
       const cardName = activeHaveCard.querySelector('h3')?.textContent.trim();
@@ -357,12 +500,28 @@ function generateMap() {
       };
 
       const buildingClass = nameToBuildingClass[cardName];
-      if (!buildingClass) return;
+      if (!buildingClass) {
+        return;
+      }
 
       let buildingDiv = document.getElementById('building');
+      if (!buildingDiv) {
+        console.error("ID가 'building'인 템플릿 요소를 찾을 수 없습니다.");
+        return;
+      }
+
       const newBuilding = buildingDiv.cloneNode(true);
       newBuilding.classList.add(buildingClass);
       newBuilding.style.display = 'block';
+
+      const cardInstance = activeHaveCard.cardInstance;
+      if (!cardInstance) {
+        return;
+      }
+
+      newBuilding.dataset.damage = cardInstance.damage;
+      newBuilding.dataset.range = cardInstance.range;
+      newBuilding.dataset.cooldown = cardInstance.cooldown;
 
       const tileRect = this.getBoundingClientRect();
       const parentRect = this.parentNode.getBoundingClientRect();
@@ -378,6 +537,12 @@ function generateMap() {
         activeHaveCard = null;
         repositionHaveCards();
       }
+      isGamePaused = false;
+      resumeSurvivalTimer();
+      if (!monsterCreationStarted) {
+        monsterMove();
+        monsterCreationStarted = true;
+      }
     });
   });
 }
@@ -385,6 +550,10 @@ function generateMap() {
 // card >------------------------------------------------------------------------------------------------------------------
 function repositionHaveCards() {
   const container = document.getElementById('haveCardContainer');
+  if (!container) {
+    console.error("ID가 'haveCardContainer'인 요소를 찾을 수 없습니다.");
+    return;
+  }
   const cards = Array.from(container.querySelectorAll('.haveCard'));
   const cardWidth = 192;
   const overlap = 96;
@@ -400,62 +569,79 @@ function repositionHaveCards() {
   });
 }
 
-
-
 function showChoice() {
   isGamePaused = true;
+  pauseSurvivalTimer(); // 카드 선택 화면 표시 시 타이머 일시 정지
+
+  // monsterDelayInterval이 실행 중이라면 정지
+  if (monsterDelayInterval !== null) {
+    clearInterval(monsterDelayInterval);
+    monsterDelayInterval = null;
+    console.log("몬스터 딜레이 감소 인터벌 일시 정지");
+  }
 
   const choiceBackground = document.getElementById('choiceBackground');
+  if (!choiceBackground) {
+    console.error("ID가 'choiceBackground'인 요소를 찾을 수 없습니다.");
+    return;
+  }
   choiceBackground.style.display = 'block';
+  choiceBackground.dataset.locked = 'false';
 
-  document.querySelectorAll('.choiceCard').forEach(card => {
-    card.remove();
-  });
-
-  document.getElementById('haveCardContainer').classList.add('hide');
+  document.querySelectorAll('.choiceCard').forEach(card => card.remove());
+  const haveCardContainer = document.getElementById('haveCardContainer');
+  if (!haveCardContainer) {
+    console.error("ID가 'haveCardContainer'인 요소를 찾을 수 없습니다.");
+    return;
+  }
+  haveCardContainer.classList.add('hide');
 
   for (let i = -1; i < 2; i++) {
     const cardInstance = CardFactory.createRandomCard();
     const card = cardInstance.element;
+    card.cardInstance = cardInstance;
+
     card.style.display = 'block';
     card.style.left = `calc(50% + ${256 * i}px)`;
     card.style.top = '50%';
     card.style.transform = 'translate(-50%, -50%)';
     card.classList.add('choiceCard');
-    document.body.appendChild(card);
-
-    const haveCardContainer = document.getElementById('haveCardContainer');
 
     card.addEventListener('click', function (event) {
       event.stopPropagation();
 
-      choiceBackground.style.display = 'none';
-      isGamePaused = false;
+      if (choiceBackground.dataset.locked === 'true') return;
+      choiceBackground.dataset.locked = 'true';
 
-      if (!monsterCreationStarted) {
-        monsterMove();
-        monsterCreationStarted = true;
+      choiceBackground.style.display = 'none';
+      if (haveCardContainer) {
+        haveCardContainer.classList.remove('hide');
       }
 
-      document.getElementById('haveCardContainer').classList.remove('hide');
+      document.querySelectorAll('.choiceCard').forEach(c => c.remove());
 
       const newHaveCard = card.cloneNode(true);
       newHaveCard.classList.remove('choiceCard');
       newHaveCard.classList.add('haveCard');
-      newHaveCard.style.display = 'block';
       newHaveCard.style.position = 'relative';
       newHaveCard.style.left = '';
       newHaveCard.style.bottom = '';
       newHaveCard.style.transform = '';
       newHaveCard.style.zIndex = '10';
+      newHaveCard.cardInstance = card.cardInstance;
+      newHaveCard.style.display = 'block';
 
-      haveCardContainer.appendChild(newHaveCard);
-      repositionHaveCards();
+      if (haveCardContainer) {
+        haveCardContainer.appendChild(newHaveCard);
+        repositionHaveCards();
+      }
 
-      document.querySelectorAll('.choiceCard').forEach(card => {
-        card.remove();
-      });
+      isGamePaused = false;
+      resumeSurvivalTimer(); // 카드 선택 후 타이머 재개
+      monsterMove(); // 몬스터 생성 시작 (monsterDelayInterval 재설정 포함)
+      monsterCreationStarted = true;
     });
+    document.body.appendChild(card);
   }
 }
 
@@ -473,7 +659,7 @@ document.addEventListener('click', function (event) {
 });
 
 document.addEventListener('click', function (event) {
-  if (!event.target.classList.contains('haveCard')) {
+  if (!event.target.classList.contains('haveCard') && !event.target.classList.contains('tile')) {
     if (activeHaveCard) {
       activeHaveCard.classList.remove('highlightCard');
       activeHaveCard = null;
@@ -481,16 +667,11 @@ document.addEventListener('click', function (event) {
   }
 });
 
-//moster>------------------------------------------------------------------------------------------------------------------
-const baseMonster = document.getElementById('monster');
 
+//moster>------------------------------------------------------------------------------------------------------------------
 function monsterMove() {
-  const monsterCreate = setInterval(() => {
-    if (isGamePaused) return;
-    if (fail) {
-      clearInterval(monsterCreate);
-      return;
-    }
+  function spawnMonster() {
+    if (isGamePaused || fail) return;
 
     const newMonster = baseMonster.cloneNode(true);
     newMonster.style.display = 'block';
@@ -505,14 +686,8 @@ function monsterMove() {
       path.push({ left, top });
     }
 
-    if (path.length === 0) {
-      console.error("몬스터 경로를 찾을 수 없습니다.");
-      return;
-    }
-
     newMonster.style.left = '784px';
     newMonster.style.top = '384px';
-
     newMonster.dataset.hp = 10;
     newMonster.dataset.maxHp = 10;
     newMonster.dataset.expValue = 5;
@@ -523,8 +698,7 @@ function monsterMove() {
     newMonster.appendChild(hpBar);
     document.body.appendChild(newMonster);
 
-    const speed = 4;
-
+    const speed = 2;
     let index = 0;
 
     const interval = setInterval(() => {
@@ -534,7 +708,6 @@ function monsterMove() {
       let monsterTop = parseFloat(getComputedStyle(newMonster).top) || 0;
 
       const target = path[index];
-
       const dx = target.left - monsterLeft;
       const dy = target.top - monsterTop;
 
@@ -546,6 +719,7 @@ function monsterMove() {
         if (index >= path.length) {
           clearInterval(interval);
           newMonster.dataset.reached = 'true';
+          newMonster.style.backgroundImage = "url(slimeAttack.gif)";
         }
         return;
       }
@@ -557,8 +731,23 @@ function monsterMove() {
       newMonster.style.left = Math.round(monsterLeft) + 'px';
       newMonster.style.top = Math.round(monsterTop) + 'px';
     }, 20);
-  }, 3000);
+
+    // 다음 몬스터 예약
+    setTimeout(spawnMonster, monsterDelay);
+  }
+
+  spawnMonster();
+
+  // 몬스터 생성 딜레이 조절 인터벌이 아직 설정되지 않았을 때만 설정
+  if (monsterDelayInterval === null) {
+    monsterDelayInterval = setInterval(() => {
+      monsterDelay = Math.max(minDelay, monsterDelay - delayReduction);
+      console.log(`현재 몬스터 생성 속도: ${monsterDelay}ms`);
+    }, 30000); // 1분마다
+    console.log("몬스터 딜레이 감소 인터벌 시작");
+  }
 }
+
 
 //exp >-------------------------------------------------------------------------------------------------------------------
 function gainExperience(exp) {
@@ -575,10 +764,32 @@ function levelUp() {
   currentLevel++;
   currentExp = 0;
   expToNextLevel = Math.floor(expToNextLevel * 1.5);
+  // 수정: alert 이전에 isGamePaused를 true로 설정하여 게임 일시 정지
+  isGamePaused = true; // 게임 상태를 알림창 전에 일시 정지
+
+  // 몬스터 딜레이 감소 인터벌이 실행 중이라면 정지
+  if (monsterDelayInterval !== null) {
+    clearInterval(monsterDelayInterval);
+    monsterDelayInterval = null;
+    console.log("레벨업 알림 전 몬스터 딜레이 감소 인터벌 정지");
+  }
+
+  // 알림창이 뜨기 전 시간 기록
+  const preAlertTime = Date.now();
   alert(`레벨 업! 당신은 이제 레벨 ${currentLevel}입니다! 새로운 카드를 선택하세요.`);
-  showChoice();
+  // 알림창이 닫힌 후 시간 기록
+  const postAlertTime = Date.now();
+
+  // 알림창이 떠 있던 시간만큼 totalPausedTime에 추가
+  totalPausedTime += (postAlertTime - preAlertTime);
+
+  showChoice(); // showChoice에서 다시 pauseSurvivalTimer 호출
   updateUILevel();
   updateUIExp();
+
+  // showChoice()에서 isGamePaused = false; 및 monsterMove()가 호출되므로,
+  // monsterMove() 내에서 monsterDelayInterval이 다시 설정될 것입니다.
+  // 이 위치에서는 별도로 monsterDelayInterval을 재시작할 필요가 없습니다.
 }
 
 

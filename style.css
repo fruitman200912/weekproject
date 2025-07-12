@@ -3,23 +3,25 @@
 }
 
 body {
+  overflow: hidden;
   background-image: url(grass.png);
   z-index: 0;
 }
 
 #main {
-  background-color: gray;
+  background-image: url(main.png);
+  background-size: cover;
   position: fixed;
-  top: 128px;
+  top: 0px;
   left: 64px;
   z-index: 2;
-  width: 64px;
-  height: 64px;
+  width: 128px;
+  height: 192px;
 }
 
 #main .hp-bar {
   position: absolute;
-  top: -12px;
+  top: 32px;
   left: 0;
   width: 100%;
   height: 6px;
@@ -71,6 +73,9 @@ body {
 }
 
 .choiceCard {
+  position: absolute;
+  z-index: 9999;
+  cursor: pointer;
   left: 50%;
   transition: all 0.3s ease;
   transform-origin: center center;
@@ -167,7 +172,7 @@ div.building6 {
 }
 
 .monster {
-  background-color: red;
+  background-image: url(slime.gif);
   position: fixed;
   display: none;
   width: 64px;
@@ -215,7 +220,7 @@ div.building6 {
   top: 10px;
   right: 10px;
   color: white;
-  background-color: rgba(0, 0, 0, 5);
+  background-color: rgba(0, 0, 0, 0.5);
   padding: 5px;
   border-radius: 5px;
 }
@@ -237,4 +242,10 @@ div.building6 {
   width: 100%;
   background-color: #0f0;
   border-radius: 5px;
+}
+
+#timeDisplay {
+  font-size: 16px;
+  margin-top: 8px;
+  display: block;
 }
