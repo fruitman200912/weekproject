@@ -963,6 +963,7 @@ function showChoice() {
         monsterCreationStarted = true;
       }
       startMonsterCreation();
+      startMainUnderAttackLoop();
     });
     document.body.appendChild(card);
   }
