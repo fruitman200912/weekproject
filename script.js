@@ -2,20 +2,98 @@ let currentExp = 0;
 let currentLevel = 1;
 let expToNextLevel = 10;
 let monsterCreationStarted = false;
-let isGamePaused = true; // 게임 시작 시 일시 정지 상태로 시작하도록 변경
-let startTime = null; // 게임 타이머가 처음 시작된 시점의 타임스탬프 (고정)
+let isGamePaused = true;
+let startTime = null;
 let survivalInterval = null;
-let totalPausedTime = 0; // 게임이 일시 정지된 총 시간 (누적)
-let pauseStartTime = null; // 현재 일시 정지가 시작된 시점의 타임스탬프
-let fail = false; // fail 변수 초기화 추가
+let totalPausedTime = 0;
+let pauseStartTime = null;
+let fail = false;
+let mainAttackInterval = null;
+const TILE_SIZE = 64;
 
-// monster>------------------------------------------------------------------------------------------------------------------
-const baseMonster = document.getElementById('monster'); // monster 템플릿 요소 참조
+// monsterClass >------------------------------------------------------------------------------------------------------------------
+let monsterDelay = 3000;
+let minDelay = 250;
+let delayReduction = 275;
+let monsterDelayInterval = null;
 
-let monsterDelay = 3000;  // 초기 생성 간격
-let minDelay = 250;       // 최소 제한
-let delayReduction = 275; // 줄일 양
-let monsterDelayInterval = null; // 몬스터 딜레이 조절 인터벌 ID를 저장할 변수 추가
+class MonsterFactory {
+  static createRandomMonster(level) {
+    const monsterTypes = ['slime', 'goblin'];
+    const randomType = monsterTypes[Math.floor(Math.random() * monsterTypes.length)];
+
+    switch (randomType) {
+      case 'slime': return new SlimeMonster(level);
+      case 'goblin': return new GoblinMonster(level);
+      default: return new SlimeMonster(level);
+    }
+  }
+}
+
+class Monster {
+  constructor(type, name, hp, speed, expValue, image, attackImage, range) {
+    this.type = type;
+    this.name = name;
+    this.hp = hp;
+    this.maxHp = hp;
+    this.speed = speed;
+    this.expValue = expValue;
+    this.image = image;
+    this.attackImage = attackImage;
+    this.range = range;
+
+    this.element = this.createMonsterElement();
+  }
+
+  createMonsterElement() {
+    const monsterDiv = document.createElement('div');
+    monsterDiv.classList.add('monster', this.type);
+    monsterDiv.style.backgroundImage = `url(${this.image})`;
+    monsterDiv.style.display = 'block';
+    monsterDiv.style.width = '64px';
+    monsterDiv.style.height = '64px';
+    monsterDiv.style.position = 'fixed';
+
+    monsterDiv.dataset.hp = this.hp;
+    monsterDiv.dataset.maxHp = this.maxHp;
+    monsterDiv.dataset.expValue = this.expValue;
+    monsterDiv.dataset.moveSpeed = this.speed;
+    monsterDiv.dataset.reached = 'false';
+    monsterDiv.dataset.attackImage = this.attackImage;
+    monsterDiv.dataset.range = this.range;
+    monsterDiv.style.transform = 'scaleX(1)';
+
+    const hpBar = document.createElement('div');
+    hpBar.className = 'hp-bar';
+
+    const hpInner = document.createElement('div');
+    hpInner.className = 'hp-inner';
+    hpInner.style.width = '100%';
+
+    hpBar.appendChild(hpInner);
+    monsterDiv.appendChild(hpBar);
+
+    return monsterDiv;
+  }
+}
+
+class SlimeMonster extends Monster {
+  constructor(level) {
+    const baseHp = 10 + (level - 1) * 5;
+    const baseSpeed = 2 + (level - 1) * 0.1;
+    const baseExp = 5 + (level - 1) * 2;
+    super('slime', '슬라임', baseHp, baseSpeed, baseExp, 'slime.gif', 'slimeAttack.gif', 0);
+  }
+}
+
+class GoblinMonster extends Monster {
+  constructor(level) {
+    const baseHp = 20 + (level - 1) * 8;
+    const baseSpeed = 2.5 + (level - 1) * 0.15;
+    const baseExp = 10 + (level - 1) * 3;
+    super('goblin', '고블린', baseHp, baseSpeed, baseExp, 'goblin.gif', 'goblinAttack.gif', 3);
+  }
+}
 
 // start >-----------------------------------------------------------------------------------------------------------------
 window.onload = function () {
@@ -24,17 +102,21 @@ window.onload = function () {
   main.dataset.maxHp = 100;
   const hpBar = document.createElement('div');
   hpBar.className = 'hp-bar';
-  hpBar.innerHTML = `<div class="hp-inner" style="width: 100%;"></div>`;
+  hpBar.innerHTML = `<div class=\"hp-inner\" style=\"width: 100%;\"></div>`;
   main.appendChild(hpBar);
 
-  generateMap(); // 맵 생성은 그대로 유지
-  showChoice(); // 카드 선택 화면 표시 (여기서 게임이 일시 정지됨)
+  generateMap();
+  showChoice();
 
   startTowerAttackLoop();
   startMainUnderAttackLoop();
 
   updateUIExp();
   updateUILevel();
+
+  rangePreviewDiv = document.getElementById('spellRangePreview');
+
+  document.body.addEventListener('mousemove', handleDocumentMouseMove);
 };
 
 // time >----------------------------------------------------------------------------------
@@ -182,10 +264,26 @@ class SpellCard extends Card {
     this.type = 'spell';
     this.name = ['화살', '폭격', '뉴클리어'][level - 1];
     this.description = [
-      '.',
-      '.',
-      '.'
+      '단일 대상에게 작은 피해',
+      '지정된 위치에 범위 피해',
+      '맵 전체에 막대한 피해'
     ][level - 1];
+
+    switch (level) {
+      case 1:
+        this.spellDamage = 10;
+        this.radius = 1;
+        break;
+      case 2:
+        this.spellDamage = 30;
+        this.radius = 3;
+        break;
+      case 3:
+        this.spellDamage = 100;
+        this.radius = 5;
+        break;
+    }
+
     const styles = [
       { background: '#f5576c', borderColor: '#c1121f' },
       { background: '#fca311', borderColor: '#14213d' },
@@ -195,25 +293,27 @@ class SpellCard extends Card {
   }
 }
 
-
 //tawerAttack >------------------------------------------------------------------------------------------------------------
 const towerList = [];
 
 function registerNewTower(newBuilding, buildingClass) {
-  // buildingClass가 정확히 'building1', 'building2', 'building3' 중 하나인지 확인
   if (["building1", "building2", "building3"].includes(buildingClass)) {
     newBuilding.isReady = true;
     newBuilding.cooldownTimer = null;
     towerList.push(newBuilding);
   } else {
-    // 만약 타워가 building1, building2, building3 클래스가 아니라면 경고
-    console.warn('Attempted to register a tower with an unrecognized class:', buildingClass);
   }
 }
 
 function startTowerAttackLoop() {
   const mainCenterX = 64 + 128 / 2;
   const mainCenterY = 0 + 192 / 2;
+
+  const imageMap = {
+    building1: { normal: 'archer.png', reload: 'archerReload.gif' },
+    building2: { normal: 'musket.png', reload: 'musketReload.gif' },
+    building3: { normal: 'sniper.png', reload: 'sniperReload.gif' },
+  };
 
   setInterval(() => {
     if (isGamePaused) return;
@@ -227,7 +327,7 @@ function startTowerAttackLoop() {
       const towerTop = parseFloat(getComputedStyle(tower).top);
       const range = parseFloat(tower.dataset.range) || 128;
       const damage = parseInt(tower.dataset.damage) || 2;
-      const towerClass = Array.from(tower.classList).find(cls => cls.startsWith('building'));
+      const towerClass = Array.from(tower.classList).find(cls => /^building[1-3]$/.test(cls));
 
       const monstersInRange = monsters.filter(monster => {
         const monsterLeft = parseFloat(getComputedStyle(monster).left);
@@ -238,70 +338,49 @@ function startTowerAttackLoop() {
         return distance <= range;
       });
 
-
       if (monstersInRange.length === 0) return;
 
       let targetMonster = null;
 
-      // 2. 타워 유형에 따라 몬스터 정렬 및 대상 선택
       if (towerClass === 'building1' || towerClass === 'building2') {
         monstersInRange.sort((a, b) => {
-          const aMonsterLeft = parseFloat(getComputedStyle(a).left);
-          const aMonsterTop = parseFloat(getComputedStyle(a).top);
-          const aMonsterCenterX = aMonsterLeft + 64 / 2;
-          const aMonsterCenterY = aMonsterTop + 64 / 2;
-          const distAToMain = Math.sqrt(Math.pow(aMonsterCenterX - mainCenterX, 2) + Math.pow(aMonsterCenterY - mainCenterY, 2));
-
-          const bMonsterLeft = parseFloat(getComputedStyle(b).left);
-          const bMonsterTop = parseFloat(getComputedStyle(b).top);
-          const bMonsterCenterX = bMonsterLeft + 64 / 2;
-          const bMonsterCenterY = bMonsterTop + 64 / 2;
-          const distBToMain = Math.sqrt(Math.pow(bMonsterCenterX - mainCenterX, 2) + Math.pow(bMonsterCenterY - mainCenterY, 2));
-
-          return distAToMain - distBToMain;
+          const aLeft = parseFloat(getComputedStyle(a).left);
+          const aTop = parseFloat(getComputedStyle(a).top);
+          const bLeft = parseFloat(getComputedStyle(b).left);
+          const bTop = parseFloat(getComputedStyle(b).top);
+          const aDist = Math.hypot(aLeft + 32 - mainCenterX, aTop + 32 - mainCenterY);
+          const bDist = Math.hypot(bLeft + 32 - mainCenterX, bTop + 32 - mainCenterY);
+          return aDist - bDist;
         });
         targetMonster = monstersInRange[0];
       } else if (towerClass === 'building3') {
         monstersInRange.sort((a, b) => {
-          const aMaxHp = parseInt(a.dataset.maxHp) || 0;
-          const bMaxHp = parseInt(b.dataset.maxHp) || 0;
-
-          if (bMaxHp !== aMaxHp) {
-            return bMaxHp - aMaxHp;
-          } else {
-            const aMonsterLeft = parseFloat(getComputedStyle(a).left);
-            const aMonsterTop = parseFloat(getComputedStyle(a).top);
-            const aMonsterCenterX = aMonsterLeft + 64 / 2;
-            const aMonsterCenterY = aMonsterTop + 64 / 2;
-            const distAToMain = Math.sqrt(Math.pow(aMonsterCenterX - mainCenterX, 2) + Math.pow(aMonsterCenterY - mainCenterY, 2));
-
-            const bMonsterLeft = parseFloat(getComputedStyle(b).left);
-            const bMonsterTop = parseFloat(getComputedStyle(b).top);
-            const bMonsterCenterX = bMonsterLeft + 64 / 2;
-            const bMonsterCenterY = bMonsterTop + 64 / 2;
-            const distBToMain = Math.sqrt(Math.pow(bMonsterCenterX - mainCenterX, 2) + Math.pow(bMonsterCenterY - mainCenterY, 2));
-
-            return distAToMain - distBToMain;
-          }
+          const aHp = parseInt(a.dataset.maxHp);
+          const bHp = parseInt(b.dataset.maxHp);
+          return bHp - aHp;
         });
         targetMonster = monstersInRange[0];
-      }
-      else if (monstersInRange.length > 0) {
+      } else {
         monstersInRange.sort((a, b) => {
-          const aMonsterLeft = parseFloat(getComputedStyle(a).left);
-          const aMonsterTop = parseFloat(getComputedStyle(a).top);
-          const distA = Math.sqrt(Math.pow(aMonsterLeft - towerLeft, 2) + Math.pow(aMonsterTop - towerTop, 2));
-
-          const bMonsterLeft = parseFloat(getComputedStyle(b).left);
-          const bMonsterTop = parseFloat(getComputedStyle(b).top);
-          const distB = Math.sqrt(Math.pow(bMonsterLeft - towerLeft, 2) + Math.pow(bMonsterTop - towerTop, 2));
-          return distA - distB;
+          const aLeft = parseFloat(getComputedStyle(a).left);
+          const aTop = parseFloat(getComputedStyle(a).top);
+          const bLeft = parseFloat(getComputedStyle(b).left);
+          const bTop = parseFloat(getComputedStyle(b).top);
+          const aDist = Math.hypot(aLeft - towerLeft, aTop - towerTop);
+          const bDist = Math.hypot(bLeft - towerLeft, bTop - towerTop);
+          return aDist - bDist;
         });
         targetMonster = monstersInRange[0];
-        console.warn(`Unrecognized tower class '${towerClass}', defaulting to closest monster target.`);
       }
 
       if (targetMonster) {
+        const images = imageMap[towerClass];
+
+        if (images) {
+          tower.style.setProperty('background-image', `url(${images.reload})`, 'important');
+          tower.style.backgroundSize = 'cover';
+        }
+
         shootProjectile(tower, targetMonster, () => {
           let hp = parseInt(targetMonster.dataset.hp);
           hp -= damage;
@@ -316,14 +395,18 @@ function startTowerAttackLoop() {
             targetMonster.remove();
             gainExperience(expGained);
           }
-        })
+        });
 
         tower.isReady = false;
+
         tower.cooldownTimer = setTimeout(() => {
           tower.isReady = true;
           tower.cooldownTimer = null;
+
+          if (images) {
+            tower.style.setProperty('background-image', `url(${images.normal})`, 'important');
+          }
         }, parseFloat(tower.dataset.cooldown) || 1000);
-      } else {
       }
     });
   }, 50);
@@ -372,7 +455,222 @@ function shootProjectile(tower, targetMonster, onHit) {
   }, interval);
 }
 
-// monsterfunction >---------------------------------------------------------------------------------------------------------
+// spell >------------------------------------------------------------------------------------------------------------------
+let isSpellTargetingMode = false;
+let activeSpellCardInstance = null;
+let rangePreviewDiv = null;
+
+function applyAoESpell(centerX, centerY, spellDamage, radiusBlocks) {
+  const pixelRadius = radiusBlocks * TILE_SIZE;
+
+  const monsters = document.querySelectorAll('.monster');
+  monsters.forEach(monster => {
+    const monsterRect = monster.getBoundingClientRect();
+    const monsterCenterX = monsterRect.left + monsterRect.width / 2;
+    const monsterCenterY = monsterRect.top + monsterRect.height / 2;
+
+    const dx = monsterCenterX - centerX;
+    const dy = monsterCenterY - centerY;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+
+    if (distance <= pixelRadius) {
+      let hp = parseInt(monster.dataset.hp);
+      hp -= spellDamage;
+      monster.dataset.hp = hp;
+
+      const inner = monster.querySelector('.hp-inner');
+      const maxHp = parseInt(monster.dataset.maxHp);
+      if (inner) {
+        inner.style.width = (hp / maxHp * 100) + '%';
+      }
+
+      if (hp <= 0) {
+        const expGained = parseInt(monster.dataset.expValue) || 0;
+        monster.remove();
+        gainExperience(expGained);
+        console.log(`몬스터 처치: ${expGained} EXP 획득`);
+      }
+    }
+  });
+}
+
+function showSpellEffect(x, y, radiusBlocks) {
+  const effectPixelRadius = radiusBlocks * TILE_SIZE;
+  const effectDiv = document.createElement('div');
+  effectDiv.classList.add('spell-explosion');
+  effectDiv.style.width = `${effectPixelRadius * 2}px`;
+  effectDiv.style.height = `${effectPixelRadius * 2}px`;
+  effectDiv.style.left = `${x - effectPixelRadius}px`;
+  effectDiv.style.top = `${y - effectPixelRadius}px`;
+  document.body.appendChild(effectDiv);
+
+  effectDiv.addEventListener('animationend', () => {
+    effectDiv.remove();
+  });
+}
+
+// monster >---------------------------------------------------------------------------------------------------------
+let monsterSpawnInterval = null;
+
+function shootGoblinProjectile(monster, mainElement) {
+  const proj = document.createElement('div');
+  proj.className = 'enemyProjectile';
+
+  const monsterLeft = parseFloat(getComputedStyle(monster).left);
+  const monsterTop = parseFloat(getComputedStyle(monster).top);
+  proj.style.left = monsterLeft + 'px';
+  proj.style.top = monsterTop + 'px';
+
+  document.body.appendChild(proj);
+
+  const mainRect = mainElement.getBoundingClientRect();
+  const mainCenterX = mainRect.left + mainRect.width / 2;
+  const mainCenterY = mainRect.top + mainRect.height / 2;
+
+  const dx = mainCenterX - monsterLeft;
+  const dy = mainCenterY - monsterTop;
+  const angleRad = Math.atan2(dy, dx);
+  const angleDeg = angleRad * (180 / Math.PI);
+  proj.style.transform = `rotate(${angleDeg}deg)`;
+
+  const duration = 300;
+  const frames = 20;
+  const interval = duration / frames;
+
+  let frame = 0;
+  const move = setInterval(() => {
+    frame++;
+    const progress = frame / frames;
+    proj.style.left = (monsterLeft + dx * progress) + 'px';
+    proj.style.top = (monsterTop + dy * progress) + 'px';
+
+    if (frame >= frames) {
+      clearInterval(move);
+      proj.remove();
+    }
+  }, interval);
+}
+
+
+function startMonsterCreation() {
+  if (monsterSpawnInterval === null && !fail) {
+    monsterSpawnInterval = setInterval(() => {
+      if (!isGamePaused && !fail) {
+        spawnMonster();
+      }
+    }, monsterDelay);
+    console.log(`몬스터 생성 시작. 주기: ${monsterDelay}ms`);
+  }
+}
+
+function stopMonsterCreation() {
+  if (monsterSpawnInterval !== null) {
+    clearInterval(monsterSpawnInterval);
+    monsterSpawnInterval = null;
+    console.log("몬스터 생성 중지");
+  }
+}
+
+function monsterMove(monster, currentWayIndex) {
+  if (isGamePaused || !monster || !monster.parentNode) {
+    if (monster && monster.dataset) {
+      monster.dataset.currentWayIndex = currentWayIndex;
+    }
+    return;
+  }
+
+  const moveSpeed = parseFloat(monster.dataset.moveSpeed);
+  const nextWayIndex = currentWayIndex - 1;
+
+  monster.dataset.currentWayIndex = nextWayIndex;
+
+  const attackRange = parseInt(monster.dataset.range || '0');
+  const maxAttackWayIndex = 1 + attackRange;
+
+  if (nextWayIndex < maxAttackWayIndex) {
+    monster.dataset.currentWayIndex = nextWayIndex;
+
+    if (monster.dataset.reached !== 'true') {
+      monster.dataset.reached = 'true';
+
+      const attackImageFromDataset = monster.dataset.attackImage;
+      monster.style.backgroundImage = `url(${attackImageFromDataset})`;
+      console.log(`[monsterMove] Monster ${monster.id} started attacking.`);
+    }
+
+    requestAnimationFrame(() => monsterMove(monster, nextWayIndex));
+    return;
+  }
+
+  const nextWay = document.getElementById(`way${nextWayIndex}`);
+  if (!nextWay) {
+    console.warn(`다음 way(${nextWayIndex})를 찾을 수 없습니다. 몬스터 이동 중단.`);
+    return;
+  }
+
+  const monsterRect = monster.getBoundingClientRect();
+  const nextWayRect = nextWay.getBoundingClientRect();
+
+  const monsterCenterX = monsterRect.left + monsterRect.width / 2;
+  const monsterCenterY = monsterRect.top + monsterRect.height / 2;
+  const nextWayCenterX = nextWayRect.left + nextWayRect.width / 2;
+  const nextWayCenterY = nextWayRect.top + nextWayRect.height / 2;
+
+  const dx = nextWayCenterX - monsterCenterX;
+  const dy = nextWayCenterY - monsterCenterY;
+  const distance = Math.sqrt(dx * dx + dy * dy);
+
+  if (nextWayIndex === 24) {
+    if (monster.dataset.flippedAt25 !== 'true') {
+      let currentScaleX = monster.style.transform.includes('scaleX(-1)') ? -1 : 1;
+      monster.style.transform = `scaleX(${currentScaleX * -1})`;
+      monster.dataset.flippedAt25 = 'true';
+      console.log(`[monsterMove Debug] Monster ID: ${monster.id} flipped at way25. New transform: ${monster.style.transform}`);
+    }
+  } else if (nextWayIndex === 11) {
+    if (monster.dataset.flippedAt12 !== 'true') {
+      let currentScaleX = monster.style.transform.includes('scaleX(-1)') ? -1 : 1;
+      monster.style.transform = `scaleX(${currentScaleX * -1})`;
+      monster.dataset.flippedAt12 = 'true';
+      console.log(`[monsterMove Debug] Monster ID: ${monster.id} flipped at way12. New transform: ${monster.style.transform}`);
+    }
+  }
+
+  if (distance < moveSpeed) {
+    monster.style.left = `${nextWayRect.left}px`;
+    monster.style.top = `${nextWayRect.top}px`;
+    requestAnimationFrame(() => monsterMove(monster, nextWayIndex));
+  } else {
+    const angle = Math.atan2(dy, dx);
+    const moveX = moveSpeed * Math.cos(angle);
+    const moveY = moveSpeed * Math.sin(angle);
+
+    monster.style.left = `${parseFloat(monster.style.left) + moveX}px`;
+    monster.style.top = `${parseFloat(monster.style.top) + moveY}px`;
+    requestAnimationFrame(() => monsterMove(monster, currentWayIndex));
+  }
+}
+
+function spawnMonster() {
+  if (isGamePaused || fail) return;
+
+  const newMonsterInstance = MonsterFactory.createRandomMonster(currentLevel);
+  const newMonsterElement = newMonsterInstance.element;
+
+  newMonsterElement.id = `monster-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+
+  const way36 = document.getElementById('way36');
+  const way36Rect = way36.getBoundingClientRect();
+
+  newMonsterElement.style.left = `${way36Rect.left}px`;
+  newMonsterElement.style.top = `${way36Rect.top}px`;
+
+  document.body.appendChild(newMonsterElement);
+
+  newMonsterElement.dataset.currentWayIndex = 36;
+  monsterMove(newMonsterElement, 36);
+}
+
 function updateMainHpBar(hp) {
   const main = document.getElementById('main');
   const inner = main.querySelector('.hp-inner');
@@ -387,31 +685,56 @@ function stopSurvivalTimer() {
 }
 
 function startMainUnderAttackLoop() {
-  setInterval(() => {
-    if (isGamePaused) return;
-    if (fail) return;
+  if (mainAttackInterval === null) {
+    mainAttackInterval = setInterval(checkMainUnderAttack, 1000);
+  }
+}
 
-    const main = document.getElementById('main');
-    let mainHp = parseInt(main.dataset.hp);
-    const attackers = document.querySelectorAll('.monster[data-reached="true"]');
+function stopMainUnderAttackLoop() {
+  if (mainAttackInterval !== null) {
+    clearInterval(mainAttackInterval);
+    mainAttackInterval = null;
+  }
+}
 
-    if (attackers.length === 0) return;
+function checkMainUnderAttack() {
+  if (isGamePaused || fail) return;
 
-    const damagePerMonster = 2;
-    mainHp -= attackers.length * damagePerMonster;
+  const mainElement = document.getElementById('main');
+  const mainHp = parseInt(mainElement.dataset.hp);
+  const mainMaxHp = parseInt(mainElement.dataset.maxHp);
+  const mainHpInner = mainElement.querySelector('.hp-inner');
 
-    main.dataset.hp = mainHp;
-    updateMainHpBar(mainHp);
+  const monsters = document.querySelectorAll('.monster');
+  let totalDamageThisTick = 0;
 
-    if (mainHp <= 0) {
-      stopSurvivalTimer();
-      const endTime = Date.now();
-      const seconds = Math.floor((endTime - startTime - totalPausedTime) / 1000);
-      alert(`Main이 파괴되었습니다!\n당신은 ${formatTime(seconds)} 동안 버텼습니다.`);
-      fail = true;
-      location.reload();
+  monsters.forEach(monster => {
+    if (monster.dataset.reached === 'true') {
+      totalDamageThisTick += 1;
+
+      if (monster.classList.contains('goblin')) {
+        shootGoblinProjectile(monster, mainElement);
+      }
     }
-  }, 1000);
+  });
+
+  if (totalDamageThisTick > 0) {
+    const newHp = mainHp - totalDamageThisTick;
+    mainElement.dataset.hp = newHp;
+    if (mainHpInner) {
+      mainHpInner.style.width = (newHp / mainMaxHp * 100) + '%';
+    }
+
+    if (newHp <= 0 && !fail) {
+      fail = true;
+      alert('Game Over! 본진의 HP가 0이 되었습니다.');
+      isGamePaused = true;
+      stopMonsterCreation();
+      stopTowerAttackLoop();
+      stopMainUnderAttackLoop();
+      pauseSurvivalTimer();
+    }
+  }
 }
 
 // map >------------------------------------------------------------------------------------------------------------------
@@ -482,8 +805,8 @@ function generateMap() {
 
   //building >------------------------------------------------------------------------------------------------------------------
   document.querySelectorAll('div[class="tile"]').forEach(tile => {
+    if (isSpellTargetingMode) return;
     tile.addEventListener('click', function (event) {
-      console.log('Tile clicked:', this.id);
       if (!activeHaveCard) {
         return;
       }
@@ -494,9 +817,6 @@ function generateMap() {
         '궁수 타워': 'building1',
         '머스킷 타워': 'building2',
         '저격수 타워': 'building3',
-        '화살': 'building4',
-        '폭격': 'building5',
-        '.': 'building6',
       };
 
       const buildingClass = nameToBuildingClass[cardName];
@@ -551,7 +871,6 @@ function generateMap() {
 function repositionHaveCards() {
   const container = document.getElementById('haveCardContainer');
   if (!container) {
-    console.error("ID가 'haveCardContainer'인 요소를 찾을 수 없습니다.");
     return;
   }
   const cards = Array.from(container.querySelectorAll('.haveCard'));
@@ -571,18 +890,13 @@ function repositionHaveCards() {
 
 function showChoice() {
   isGamePaused = true;
-  pauseSurvivalTimer(); // 카드 선택 화면 표시 시 타이머 일시 정지
+  pauseSurvivalTimer();
 
-  // monsterDelayInterval이 실행 중이라면 정지
-  if (monsterDelayInterval !== null) {
-    clearInterval(monsterDelayInterval);
-    monsterDelayInterval = null;
-    console.log("몬스터 딜레이 감소 인터벌 일시 정지");
-  }
+  stopMonsterCreation();
+  stopMainUnderAttackLoop();
 
   const choiceBackground = document.getElementById('choiceBackground');
   if (!choiceBackground) {
-    console.error("ID가 'choiceBackground'인 요소를 찾을 수 없습니다.");
     return;
   }
   choiceBackground.style.display = 'block';
@@ -591,7 +905,6 @@ function showChoice() {
   document.querySelectorAll('.choiceCard').forEach(card => card.remove());
   const haveCardContainer = document.getElementById('haveCardContainer');
   if (!haveCardContainer) {
-    console.error("ID가 'haveCardContainer'인 요소를 찾을 수 없습니다.");
     return;
   }
   haveCardContainer.classList.add('hide');
@@ -637,9 +950,19 @@ function showChoice() {
       }
 
       isGamePaused = false;
-      resumeSurvivalTimer(); // 카드 선택 후 타이머 재개
-      monsterMove(); // 몬스터 생성 시작 (monsterDelayInterval 재설정 포함)
-      monsterCreationStarted = true;
+      resumeSurvivalTimer();
+
+      document.querySelectorAll('.monster').forEach(monster => {
+        const storedWayIndex = parseInt(monster.dataset.currentWayIndex);
+        if (!isNaN(storedWayIndex) && monster.dataset.reached !== 'true') {
+          requestAnimationFrame(() => monsterMove(monster, storedWayIndex));
+        }
+      });
+
+      if (!monsterCreationStarted) {
+        monsterCreationStarted = true;
+      }
+      startMonsterCreation();
     });
     document.body.appendChild(card);
   }
@@ -650,11 +973,48 @@ let activeHaveCard = null;
 document.addEventListener('click', function (event) {
   if (event.target.classList.contains('haveCard')) {
     event.stopPropagation();
+
     if (activeHaveCard && activeHaveCard !== event.target) {
       activeHaveCard.classList.remove('highlightCard');
     }
     event.target.classList.add('highlightCard');
     activeHaveCard = event.target;
+
+    const cardInstance = activeHaveCard.cardInstance;
+
+    if (cardInstance && cardInstance.type === 'spell') {
+      isSpellTargetingMode = true;
+      activeSpellCardInstance = cardInstance;
+
+      if (rangePreviewDiv) {
+        rangePreviewDiv.style.display = 'block';
+        const pixelRadius = activeSpellCardInstance.radius * TILE_SIZE;
+        rangePreviewDiv.style.width = `${pixelRadius * 2}px`;
+        rangePreviewDiv.style.height = `${pixelRadius * 2}px`;
+      }
+
+    } else {
+      isSpellTargetingMode = false;
+      activeSpellCardInstance = null;
+      hideRangePreview();
+    }
+  }
+  else if (isSpellTargetingMode && activeSpellCardInstance) {
+    const clickX = event.clientX;
+    const clickY = event.clientY;
+
+    applyAoESpell(clickX, clickY, activeSpellCardInstance.spellDamage, activeSpellCardInstance.radius);
+    showSpellEffect(clickX, clickY, activeSpellCardInstance.radius);
+
+    isSpellTargetingMode = false;
+    activeSpellCardInstance = null;
+    hideRangePreview();
+
+    if (activeHaveCard) {
+      activeHaveCard.remove();
+      activeHaveCard = null;
+      repositionHaveCards();
+    }
   }
 });
 
@@ -667,87 +1027,51 @@ document.addEventListener('click', function (event) {
   }
 });
 
+function handleDocumentMouseMove(event) {
+  if (isSpellTargetingMode && rangePreviewDiv && activeSpellCardInstance) {
+    const mouseX = event.clientX;
+    const mouseY = event.clientY;
 
-//moster>------------------------------------------------------------------------------------------------------------------
-function monsterMove() {
-  function spawnMonster() {
-    if (isGamePaused || fail) return;
-
-    const newMonster = baseMonster.cloneNode(true);
-    newMonster.style.display = 'block';
-
-    const path = [];
-    for (let i = 32; i > 0; i--) {
-      const way = document.getElementById('way' + i);
-      if (!way) continue;
-      const style = getComputedStyle(way);
-      const left = parseFloat(style.left);
-      const top = parseFloat(style.top);
-      path.push({ left, top });
-    }
-
-    newMonster.style.left = '784px';
-    newMonster.style.top = '384px';
-    newMonster.dataset.hp = 10;
-    newMonster.dataset.maxHp = 10;
-    newMonster.dataset.expValue = 5;
-
-    const hpBar = document.createElement('div');
-    hpBar.className = 'hp-bar';
-    hpBar.innerHTML = `<div class="hp-inner" style="width: 100%;"></div>`;
-    newMonster.appendChild(hpBar);
-    document.body.appendChild(newMonster);
-
-    const speed = 2;
-    let index = 0;
-
-    const interval = setInterval(() => {
-      if (isGamePaused) return;
-
-      let monsterLeft = parseFloat(getComputedStyle(newMonster).left) || 0;
-      let monsterTop = parseFloat(getComputedStyle(newMonster).top) || 0;
-
-      const target = path[index];
-      const dx = target.left - monsterLeft;
-      const dy = target.top - monsterTop;
-
-      if (Math.abs(dx) <= speed && Math.abs(dy) <= speed) {
-        newMonster.style.left = target.left + 'px';
-        newMonster.style.top = target.top + 'px';
-        index++;
-
-        if (index >= path.length) {
-          clearInterval(interval);
-          newMonster.dataset.reached = 'true';
-          newMonster.style.backgroundImage = "url(slimeAttack.gif)";
-        }
-        return;
-      }
-
-      const angle = Math.atan2(dy, dx);
-      monsterLeft += Math.cos(angle) * speed;
-      monsterTop += Math.sin(angle) * speed;
-
-      newMonster.style.left = Math.round(monsterLeft) + 'px';
-      newMonster.style.top = Math.round(monsterTop) + 'px';
-    }, 20);
-
-    // 다음 몬스터 예약
-    setTimeout(spawnMonster, monsterDelay);
-  }
-
-  spawnMonster();
-
-  // 몬스터 생성 딜레이 조절 인터벌이 아직 설정되지 않았을 때만 설정
-  if (monsterDelayInterval === null) {
-    monsterDelayInterval = setInterval(() => {
-      monsterDelay = Math.max(minDelay, monsterDelay - delayReduction);
-      console.log(`현재 몬스터 생성 속도: ${monsterDelay}ms`);
-    }, 30000); // 1분마다
-    console.log("몬스터 딜레이 감소 인터벌 시작");
+    rangePreviewDiv.style.left = `${mouseX}px`;
+    rangePreviewDiv.style.top = `${mouseY}px`;
   }
 }
 
+function hideRangePreview() {
+  if (rangePreviewDiv) {
+    rangePreviewDiv.style.display = 'none';
+  }
+}
+
+document.body.addEventListener('mousemove', handleDocumentMouseMove);
+
+
+function selectCard(card, choiceBackground) {
+  document.body.removeEventListener('click', handleDocumentClick);
+  document.body.removeEventListener('mousemove', handleDocumentMouseMove);
+
+  choiceBackground.style.display = 'none';
+
+  if (card.type === 'tower') {
+    handleTowerCardSelection(card);
+  } else if (card.type === 'spell') {
+    handleSpellCardSelection(card);
+  }
+
+  isGamePaused = false;
+  resumeSurvivalTimer();
+  startMonsterCreation();
+  startMainUnderAttackLoop();
+}
+
+
+function handleTowerCardSelection(card) {
+  isSpellTargetingMode = true;
+  activeSpellCardInstance = card;
+
+  document.body.addEventListener('click', handleDocumentClick);
+  document.body.addEventListener('mousemove', handleDocumentMouseMove);
+}
 
 //exp >-------------------------------------------------------------------------------------------------------------------
 function gainExperience(exp) {
@@ -759,39 +1083,25 @@ function gainExperience(exp) {
   }
 }
 
-
 function levelUp() {
   currentLevel++;
   currentExp = 0;
   expToNextLevel = Math.floor(expToNextLevel * 1.5);
-  // 수정: alert 이전에 isGamePaused를 true로 설정하여 게임 일시 정지
-  isGamePaused = true; // 게임 상태를 알림창 전에 일시 정지
+  isGamePaused = true;
 
-  // 몬스터 딜레이 감소 인터벌이 실행 중이라면 정지
-  if (monsterDelayInterval !== null) {
-    clearInterval(monsterDelayInterval);
-    monsterDelayInterval = null;
-    console.log("레벨업 알림 전 몬스터 딜레이 감소 인터벌 정지");
-  }
+  stopMonsterCreation();
+  stopMainUnderAttackLoop();
 
-  // 알림창이 뜨기 전 시간 기록
   const preAlertTime = Date.now();
   alert(`레벨 업! 당신은 이제 레벨 ${currentLevel}입니다! 새로운 카드를 선택하세요.`);
-  // 알림창이 닫힌 후 시간 기록
   const postAlertTime = Date.now();
 
-  // 알림창이 떠 있던 시간만큼 totalPausedTime에 추가
   totalPausedTime += (postAlertTime - preAlertTime);
 
-  showChoice(); // showChoice에서 다시 pauseSurvivalTimer 호출
+  showChoice();
   updateUILevel();
   updateUIExp();
-
-  // showChoice()에서 isGamePaused = false; 및 monsterMove()가 호출되므로,
-  // monsterMove() 내에서 monsterDelayInterval이 다시 설정될 것입니다.
-  // 이 위치에서는 별도로 monsterDelayInterval을 재시작할 필요가 없습니다.
 }
-
 
 function updateUIExp() {
   const expDisplay = document.getElementById('expDisplay');
@@ -804,7 +1114,6 @@ function updateUIExp() {
     expBarFill.style.height = percent + '%';
   }
 }
-
 
 function updateUILevel() {
   const levelDisplay = document.getElementById('levelDisplay');

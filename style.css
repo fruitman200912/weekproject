@@ -50,7 +50,7 @@ body {
 }
 
 .tile {
-  background-color: burlywood;
+  background-image: url(tile.png);
   position: fixed;
   top: 64px;
   left: 192px;
@@ -127,7 +127,6 @@ div.highlightCard {
 }
 
 .building {
-  background-color: brown;
   position: fixed;
   display: none;
   z-index: 10;
@@ -137,27 +136,15 @@ div.highlightCard {
 
 /*bulidingList >------------------------------------------------------------*/
 div.building1 {
-  background-color: aliceblue;
+  background-image: url(archer.png);
 }
 
 div.building2 {
-  background-color: black;
+  background-image: url(musket.png);
 }
 
 div.building3 {
-  background-color: aqua;
-}
-
-div.building4 {
-  background-color: crimson;
-}
-
-div.building5 {
-  background-color: deepskyblue;
-}
-
-div.building6 {
-  background-color: gold;
+  background-image: url(sniper.png);
 }
 
 #choiceBackground {
@@ -171,16 +158,17 @@ div.building6 {
   z-index: 99;
 }
 
+/* monster >---------------------------------------------------------------*/
 .monster {
-  background-image: url(slime.gif);
   position: fixed;
   display: none;
   width: 64px;
   height: 64px;
   z-index: 15;
-  width: 64px;
-  height: 64px;
-  pointer-events: none
+  pointer-events: none;
+  background-size: contain;
+  background-repeat: no-repeat;
+  background-position: center;
 }
 
 .hp-bar {
@@ -193,7 +181,7 @@ div.building6 {
   border-radius: 3px;
   overflow: hidden;
   z-index: 20;
-  pointer-events: none
+  pointer-events: none;
 }
 
 .hp-inner {
@@ -202,7 +190,7 @@ div.building6 {
   width: 100%;
   transition: width 0.2s ease-out;
   z-index: 21;
-  pointer-events: none
+  pointer-events: none;
 }
 
 .projectile {
@@ -248,4 +236,50 @@ div.building6 {
   font-size: 16px;
   margin-top: 8px;
   display: block;
+}
+
+/* spell-explosion >-------------------------------------------------------*/
+.spell-explosion {
+  position: absolute;
+  background-color: rgba(255, 165, 0, 0.7);
+  border-radius: 50%;
+  transform: scale(0);
+  opacity: 1;
+  animation: explode 0.5s forwards;
+  z-index: 9998;
+  pointer-events: none;
+}
+
+@keyframes explode {
+  from {
+    transform: scale(0);
+    opacity: 1;
+  }
+
+  to {
+    transform: scale(1);
+    opacity: 0;
+  }
+}
+
+/* spell-range-preview >---------------------------------------------------*/
+#spellRangePreview {
+  position: absolute;
+  border-radius: 50%;
+  background-color: rgba(0, 255, 0, 0.3);
+  border: 1px dashed rgba(0, 255, 0, 0.7);
+  display: none;
+  pointer-events: none;
+  z-index: 9999;
+  transform: translate(-50%, -50%);
+}
+
+.enemyProjectile {
+  position: fixed;
+  width: 64px;
+  height: 64px;
+  background-image: url('goblinProjectile.png');
+  background-size: cover;
+  z-index: 1000;
+  pointer-events: none;
 }
